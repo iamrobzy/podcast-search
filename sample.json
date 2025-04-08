@@ -1,0 +1,17 @@
+{
+    "text": "bla bla blaha",
+    "time_start": [0.2, 0.5, 1.1],
+    "time_end": [0.3, 0.6, 1.4],
+    "show_uri": "spotify:show:2NYtxEZyYelR6RMKmjfPLB", 
+    "show_name": "Kream in your Koffee",
+    "show_description": "A 20-something blunt female takes on the world and gives you her take on it. Enjoy visits from special guests and friends to give insight and input into interesting situations.",
+    "publisher": "Katie Houle", 
+    "language": "['en']",
+    "rss_link": "https://anchor.fm/s/11b84b68/podcast/rss", 
+    "episode_uri": "spotify:episode:000A9sRBYdVh66csG2qEdj", 
+    "episode_name": "1: It’s Christmas Time", 
+    "episode_description": "On the first ever episode of Kream in your Koffee, Katie talks about tips for Christmas shopping. We also get a little insight into who and what we’ll be hearing about in next weeks episode!",
+    "duration": "12.700133", 
+    "show_filename_prefix": "show_2NYtxEZyYelR6RMKmjfPLB", 
+    "episode_filename_prefix": "000A9sRBYdVh66csG2qEdj"
+}
