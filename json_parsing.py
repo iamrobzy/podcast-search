@@ -2,7 +2,7 @@ import json
 import os
 import time
 import requests
-DIR_PATH = "./podcasts-no-audio-13GB/spotify-podcasts-2020-summarization-testset/spotify-podcasts-2020/"
+DIR_PATH = "D://podcasts-no-audio-13GB/spotify-podcasts-2020-summarization-testset/spotify-podcasts-2020/"
 PASSWORD = "ON9oupZ1"
 def process_json_file(data):
     res = data["results"]
@@ -40,7 +40,7 @@ def process_metadata(metadata):
 def sort_metadata():
     res = []
 
-    with open(DIR_PATH + "metadata-summarization-testset.tsv") as f:
+    with open(DIR_PATH + "metadata-summarization-testset.tsv",encoding='utf-8') as f:
     #with open("./podcasts-no-audio-13GB/metadata.tsv") as f:
         i = 1
         lines = []
@@ -58,7 +58,7 @@ def sort_metadata():
         return item[0].upper()
     res.sort(key=sorting_func)
 
-    with open("metadata_sorted.tsv", "w") as f:
+    with open("metadata_sorted.tsv", "w",encoding='utf-8') as f:
         for item in res:
             i = item[1]
             f.write(lines[i])
@@ -68,59 +68,59 @@ def insert_into_index(json: dict, id = 1):
     #print("response: ", response)
     return response
 
-print("start metadata sorting")       
-start = time.time()
-if not os.path.exists("metadata_sorted.txt"):
-    sort_metadata()
+# print("start metadata sorting")       
+# start = time.time()
+# if not os.path.exists("metadata_sorted.txt"):
+#     sort_metadata()
 
-print("metadata sorting done in" , time.time() - start, "seconds")
-
-
-
-path = DIR_PATH + "podcasts-transcripts-summarization-testset/" 
-dirs = os.listdir(path)
-dirs.sort()
+# print("metadata sorting done in" , time.time() - start, "seconds")
 
 
-meta_file = open("metadata_sorted.tsv", "r")
-processed_files = 0
-print("start json processing")  
-start = time.time()
-def upper_sorter(item):
-    return item.upper()
-for dir in dirs: #For all numbers (0,1,...,8)
-    path_inner = path + dir + "/"
-    dirs_inner = os.listdir(path_inner)
-    dirs_inner.sort(key=upper_sorter)
-    for dir_inner in dirs_inner: #For all chars 0,1,...,9, A, B, ... Z
-        path_inner_inner = path_inner + dir_inner + "/"
-        shows = os.listdir(path_inner_inner)
-        shows.sort(key=upper_sorter)
-        for show in shows: #For all podcast episodes 
-            show_path = path_inner_inner + show + "/"
-            episodes = os.listdir(show_path)
-            episodes.sort(key=upper_sorter)
-            for episode in episodes:
-                episode_path = show_path + episode + ""
+
+# path = DIR_PATH + "podcasts-transcripts-summarization-testset/" 
+# dirs = os.listdir(path)
+# dirs.sort()
+
+
+# meta_file = open("metadata_sorted.tsv", "r",encoding='utf-8')
+# processed_files = 0
+# print("start json processing")  
+# start = time.time()
+# def upper_sorter(item):
+#     return item.upper()
+# for dir in dirs: #For all numbers (0,1,...,8)
+#     path_inner = path + dir + "/"
+#     dirs_inner = os.listdir(path_inner)
+#     dirs_inner.sort(key=upper_sorter)
+#     for dir_inner in dirs_inner: #For all chars 0,1,...,9, A, B, ... Z
+#         path_inner_inner = path_inner + dir_inner + "/"
+#         shows = os.listdir(path_inner_inner)
+#         shows.sort(key=upper_sorter)
+#         for show in shows: #For all podcast episodes 
+#             show_path = path_inner_inner + show + "/"
+#             episodes = os.listdir(show_path)
+#             episodes.sort(key=upper_sorter)
+#             for episode in episodes:
+#                 episode_path = show_path + episode + ""
                 
-                with open(episode_path, "r") as f:
-                    res = process_json_file(json.load(f))
+#                 with open(episode_path, "r",encoding='utf-8') as f:
+#                     res = process_json_file(json.load(f))
 
-                metadata = meta_file.readline()              
-                meta = process_metadata(metadata)
-                #print("found episode: \n" + episode_path[138:])
-                #print(meta["show_uri"][8:] + "/" +meta["episode_filename_prefix"])
-                for key in res:
-                    meta[key] = res[key]
-                processed_files += 1
+#                 metadata = meta_file.readline()              
+#                 meta = process_metadata(metadata)
+#                 #print("found episode: \n" + episode_path[138:])
+#                 #print(meta["show_uri"][8:] + "/" +meta["episode_filename_prefix"])
+#                 for key in res:
+#                     meta[key] = res[key]
+#                 processed_files += 1
 
-                insert_into_index(meta, processed_files)
+#                 insert_into_index(meta, processed_files)
                 
-                if (processed_files % 100 == 0):
-                    print("processed", processed_files, "files")
-meta_file.close()
+#                 if (processed_files % 100 == 0):
+#                     print("processed", processed_files, "files")
+# meta_file.close()
 
-print("json parsing done in" , time.time() - start, "seconds")
+# print("json parsing done in" , time.time() - start, "seconds")
 
 #Run test query
 query = {
@@ -130,5 +130,7 @@ query = {
 }
 response = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=query, auth=("elastic", "ON9oupZ1"))
 
-print("got response:" , response.content)
-
+# print("got response:" , response.content)
+data = response.json()
+with open("output.json", "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
