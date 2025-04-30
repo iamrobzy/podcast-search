@@ -1,6 +1,10 @@
+index="podcast_test"
+
 import streamlit as st
 from elasticsearch import Elasticsearch
 import pandas as pd
+
+
 
 # Connect to Elasticsearch
 es = Elasticsearch(
@@ -26,7 +30,7 @@ if st.button("Start Search"):
         }
     }
 
-    res = es.search(index="podcast_test", body=body, size=50)
+    res = es.search(index, body=body, size=50)
 
     # Helper function: extract clip with fixed total length
     def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
