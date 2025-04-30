@@ -1,49 +1,45 @@
-index="podcast_test"
-
+index_name="podcast_test"
 import streamlit as st
 from elasticsearch import Elasticsearch
 import pandas as pd
 
-
-
-# Connect to Elasticsearch
-es = Elasticsearch(
-    "http://localhost:9200",
-)
+es = Elasticsearch("http://localhost:9200")
 
 st.title("Podcast Clip Search")
 
-# Input search keyword
 query = st.text_input("Enter a search keyword")
 
-# User selects total clip length (in minutes)
 clip_length_min = st.slider("Select total clip length (minutes)", 1, 10, 2)
 
 # Search button
-if st.button("Start Search"):
-    # Elasticsearch query
+if st.button("Start Search") and query.strip():
     body = {
         "query": {
             "match": {
                 "word_list": query
             }
+        },
+        "highlight": {
+            "fields": {
+                "word_list": {}
+            },
+            "pre_tags": ["<mark>"],
+            "post_tags": ["</mark>"]
         }
     }
 
-    res = es.search(index, body=body, size=50)
+    res = es.search(index=index_name, body=body, size=50)
 
-    # Helper function: extract clip with fixed total length
     def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
         clips = []
 
-        half_clip = clip_seconds / 2  # Half of the clip, e.g., 30 seconds
+        half_clip = clip_seconds / 2
 
         for target_word in target_words:
             target_indices = [i for i, word in enumerate(word_list) if word.lower() == target_word.lower()]
-            
+
             for idx in target_indices:
                 center_start = time_start_list[idx]
-
                 window_start = center_start - half_clip
                 window_end = center_start + half_clip
 
@@ -53,7 +49,10 @@ if st.button("Start Search"):
 
                 for i in range(len(word_list)):
                     if (time_start_list[i] >= window_start) and (time_end_list[i] <= window_end):
-                        clip_words.append(word_list[i])
+                        word = word_list[i]
+                        if word.lower() in [w.lower() for w in target_words]:
+                            word = f"<mark>{word}</mark>"
+                        clip_words.append(word)
                         if clip_start_time is None:
                             clip_start_time = time_start_list[i]
                         clip_end_time = time_end_list[i]
@@ -72,18 +71,19 @@ if st.button("Start Search"):
 
     for hit in res.body["hits"]["hits"]:
         source = hit["_source"]
+        highlights = hit.get("highlight", {}).get("word_list", [])
         word_list = source.get("word_list", [])
         time_start_list = source.get("time_start", [])
         time_end_list = source.get("time_end", [])
-        
+
         if not word_list or not time_start_list or not time_end_list:
             continue
 
         target_words = query.strip().split()
 
         clips = extract_clip_fixed_length(
-            word_list, time_start_list, time_end_list, 
-            target_words, clip_seconds=clip_length_min * 60  # Convert to seconds
+            word_list, time_start_list, time_end_list,
+            target_words, clip_seconds=clip_length_min * 60
         )
 
         for clip in clips:
@@ -98,6 +98,16 @@ if st.button("Start Search"):
 
     if final_results:
         df = pd.DataFrame(final_results)
-        st.dataframe(df, use_container_width=True)
+        st.markdown("### Search Results")
+        for _, row in df.iterrows():
+            st.markdown(f"""
+                <div style='padding:10px; margin-bottom:15px; background:#f9f9f9; border-left: 4px solid #ccc'>
+                    <b>Clip:</b> {row['Clip Text']}<br>
+                    <b>Start:</b> {row['Start Time (s)']}s | <b>End:</b> {row['End Time (s)']}s<br>
+                    <b>Episode:</b> {row['episode_name']}<br>
+                    <b>Show:</b> {row['show_name']}<br>
+                    <b>Publisher:</b> {row['publisher']}<br>
+                </div>
+            """, unsafe_allow_html=True)
     else:
         st.warning("No matching clips found. Please try another keyword.")
