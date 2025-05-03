@@ -3,6 +3,7 @@ import streamlit as st
 from elasticsearch import Elasticsearch
 import pandas as pd
 import requests
+import json
 
 
 es = Elasticsearch("http://localhost:9200")
@@ -10,6 +11,18 @@ es = Elasticsearch("http://localhost:9200")
 st.title("Podcast Clip Search")
 
 query = st.text_input("Enter a search keyword")
+
+
+selected_index = st.selectbox(
+    "Select search method",
+    ("bm25", "LM Dirichlet", "IB"),
+)
+
+index_name_map = {
+    "bm25": "podcast_test",
+    "LM Dirichlet": "podcast_test_lm",
+    "IB": "podcast_test_ib"
+}
 
 clip_length_min = st.slider("Select total clip length (minutes)", 1, 10, 2)
 
@@ -27,12 +40,15 @@ if st.button("Start Search") and query.strip():
             },
             "pre_tags": ["<mark>"],
             "post_tags": ["</mark>"]
-        }
+        },
+        "explain": True
     }
 
+    target_index = index_name_map[selected_index]
+
     #res = es.search(index=index_name, body=body, size=50)
-    res = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=body, auth=("elastic", "ON9oupZ1"))
-    
+    res = requests.get("http://127.0.0.1:9200/" + target_index + "/_search", json=body, auth=("elastic", "ON9oupZ1"))
+    print("response status code: ", res.status_code)
     def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
         clips = []
         target_words_lower = [word.lower() for word in target_words]
@@ -79,8 +95,12 @@ if st.button("Start Search") and query.strip():
 
     final_results = []
 
+    #for hit in res.body["hits"]["hits"]
     for hit in res.json()["hits"]["hits"]:
         source = hit["_source"]
+        explanation = hit.get("_explanation", {})
+        explanation_text = json.dumps(explanation, indent=2)
+
         highlights = hit.get("highlight", {}).get("word_list", [])
         word_list = source.get("word_list", [])
         time_start_list = source.get("time_start", [])
@@ -105,6 +125,7 @@ if st.button("Start Search") and query.strip():
             clip["episode_name"] = source.get("episode_name", "")
             clip["episode_description"] = source.get("episode_description", "")
             clip["score"] = hit["_score"]
+            clip["explanation"] = explanation_text
             final_results.append(clip)
 
     if final_results:
@@ -120,6 +141,10 @@ if st.button("Start Search") and query.strip():
                     <b>Show:</b> {row['show_name']}<br>
                     <b>Publisher:</b> {row['publisher']}<br>
                     <b>Score:</b> {row['score']}<br>
+                    <details>
+                        <summary><b>Explanation (Click to Expand)</b></summary>
+                        <pre>{row['explanation']}</pre>
+                    </details>
                 </div>
             """, unsafe_allow_html=True)
     else:
