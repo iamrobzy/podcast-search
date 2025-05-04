@@ -1,37 +1,32 @@
-index_name="podcast_test"
+index_name = "podcast_test"
 import streamlit as st
 from elasticsearch import Elasticsearch
 import pandas as pd
-import requests
 import json
-
+from collections import defaultdict
 
 es = Elasticsearch("http://localhost:9200")
-
-st.title("Podcast Clip Search")
+st.title("Podcast Clip Search - RRF Hybrid")
 
 query = st.text_input("Enter a search keyword")
+clip_length_min = st.slider("Select total clip length (minutes)", 1, 10, 2)
+k = 60  # RRF parameter
 
-
-selected_index = st.selectbox(
-    "Select search method",
-    ("bm25", "LM Dirichlet", "IB", "RRF"),
-)
-
-index_name_map = {
-    "bm25": "podcast_test",
-    "LM Dirichlet": "podcast_test_lm",
-    "IB": "podcast_test_ib"
+retrieval_models = {
+    "bm25": {"type": "bm25", "active": True},
+    "LM Dirichlet": {"type": "LMDirichlet", "active": True},
+    "IB": {"type": "IB", "active": True}
 }
 
-clip_length_min = st.slider("Select total clip length (minutes)", 1, 10, 2)
 
-# Search button
-if st.button("Start Search") and query.strip():
-    body = {
+def build_query(model_type):
+    return {
         "query": {
             "match": {
-                "word_list": query
+                "word_list": {
+                    "query": query,
+                    "analyzer": "standard"
+                }
             }
         },
         "highlight": {
@@ -40,51 +35,20 @@ if st.button("Start Search") and query.strip():
             },
             "pre_tags": ["<mark>"],
             "post_tags": ["</mark>"]
-        },
-        "explain": True
+        }
     }
 
-    if selected_index == "RRF":
-        from collections import defaultdict
-        k = 60
-        rrf_scores = defaultdict(float)
-        hits_by_id = {}
-        for method, idx in index_name_map.items():
-            response = requests.get(f"http://127.0.0.1:9200/{idx}/_search", json=body, auth=("elastic","ON9oupZ1"))
-            print(f"{method} returned", response.status_code)
-            hits = response.json()["hits"]["hits"]
-            for rank, hit in enumerate(hits):
-                docid = hit["_id"]
-                rrf_scores[docid] += 1.0/(k + rank + 1)
-                if docid not in hits_by_id:
-                    hits_by_id[docid] = hit
-        fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-        fused_hits = [hits_by_id[docid] for docid,_ in fused]
-    else:
-        target_index = index_name_map[selected_index]
-        res = requests.get("http://127.0.0.1:9200/" + target_index + "/_search", json=body, auth=("elastic", "ON9oupZ1"))
-        print("response status code: ", res.status_code)
-        fused_hits = res.json()["hits"]["hits"]
 
-    def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
-        clips = []
-        target_words_lower = [word.lower() for word in target_words]
-        half_clip = clip_seconds / 2
-    
-        visited_end = 0
-        #Indicies of words that are in our query
-        target_indices = [i for i, word in enumerate(word_list) if word.lower() in target_words_lower]
+def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
+    clips = []
+    half_clip = clip_seconds / 2
 
+    for target_word in target_words:
+        target_indices = [i for i, word in enumerate(word_list) if word.lower() == target_word.lower()]
         for idx in target_indices:
             center_start = time_start_list[idx]
-            
-            #We've already covered around this word in another clip so we dont need to do it again
-            if center_start < visited_end - 10:
-                continue
             window_start = center_start - half_clip
             window_end = center_start + half_clip
-
-            visited_end = window_end
 
             clip_words = []
             clip_start_time = None
@@ -107,19 +71,32 @@ if st.button("Start Search") and query.strip():
                     "End Time (s)": clip_end_time,
                     "Clip Length (min)": round((clip_end_time - clip_start_time) / 60, 2)
                 })
+    return clips
 
-        return clips
+
+if st.button("Start Search") and query.strip():
+    rrf_scores = defaultdict(float)
+    hit_metadata = {}
+
+    for model_name, model_config in retrieval_models.items():
+        if not model_config["active"]:
+            continue
+
+        body = build_query(model_config["type"])
+        res = es.search(index=index_name, body=body, size=50)
+        for rank, hit in enumerate(res["hits"]["hits"]):
+            doc_id = hit["_id"]
+            score = 1 / (rank + 1 + k)
+            rrf_scores[doc_id] += score
+            if doc_id not in hit_metadata:
+                hit_metadata[doc_id] = hit
+
+    ranked_doc_ids = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
     final_results = []
-
-    #for hit in res.body["hits"]["hits"]
-    # for hit in res.json()["hits"]["hits"]:
-    for hit in fused_hits:
+    for doc_id, score in ranked_doc_ids:
+        hit = hit_metadata[doc_id]
         source = hit["_source"]
-        explanation = hit.get("_explanation", {})
-        explanation_text = json.dumps(explanation, indent=2)
-
-        highlights = hit.get("highlight", {}).get("word_list", [])
         word_list = source.get("word_list", [])
         time_start_list = source.get("time_start", [])
         time_end_list = source.get("time_end", [])
@@ -128,7 +105,6 @@ if st.button("Start Search") and query.strip():
             continue
 
         target_words = query.strip().split()
-
         clips = extract_clip_fixed_length(
             word_list, time_start_list, time_end_list,
             target_words, clip_seconds=clip_length_min * 60
@@ -142,14 +118,12 @@ if st.button("Start Search") and query.strip():
             clip["episode_uri"] = source.get("episode_uri", "")
             clip["episode_name"] = source.get("episode_name", "")
             clip["episode_description"] = source.get("episode_description", "")
-            clip["score"] = hit["_score"]
-            clip["explanation"] = explanation_text
+            clip["rrf_score"] = round(score, 4)
             final_results.append(clip)
 
     if final_results:
         df = pd.DataFrame(final_results)
-        df.sort_values(by=["score"], ascending=False)
-        st.markdown("### Search Results")
+        st.markdown("### Hybrid Search Results (RRF)")
         for _, row in df.iterrows():
             st.markdown(f"""
                 <div style='padding:10px; margin-bottom:15px; background:#f9f9f9; border-left: 4px solid #ccc'>
@@ -158,11 +132,7 @@ if st.button("Start Search") and query.strip():
                     <b>Episode:</b> {row['episode_name']}<br>
                     <b>Show:</b> {row['show_name']}<br>
                     <b>Publisher:</b> {row['publisher']}<br>
-                    <b>Score:</b> {row['score']}<br>
-                    <details>
-                        <summary><b>Explanation (Click to Expand)</b></summary>
-                        <pre>{row['explanation']}</pre>
-                    </details>
+                    <b>RRF Score:</b> {row['rrf_score']}<br>
                 </div>
             """, unsafe_allow_html=True)
     else:
