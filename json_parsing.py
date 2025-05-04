@@ -2,8 +2,23 @@ import json
 import os
 import time
 import requests
-DIR_PATH = "D://podcasts-no-audio-13GB/spotify-podcasts-2020-summarization-testset/spotify-podcasts-2020/"
+DIR_PATH = "../podcasts-no-audio-13GB/spotify-podcasts-2020-summarization-testset/spotify-podcasts-2020/"
 PASSWORD = "ON9oupZ1"
+ES_URL = "http://127.0.0.1:9200/"
+
+do_process_metadata = True
+do_populate_index = {
+    "bm25": False,
+    "LM Dirichlet": True,
+    "IB": True,
+}
+do_run_test_query = True
+
+index_name_map = {
+    "bm25": "podcast_test",
+    "LM Dirichlet": "podcast_test_lm",
+    "IB": "podcast_test_ib"
+}
 def process_json_file(data):
     res = data["results"]
     word_list = []
@@ -63,74 +78,282 @@ def sort_metadata():
             i = item[1]
             f.write(lines[i])
 
-def insert_into_index(json: dict, id = 1):
-    response = requests.post("http://127.0.0.1:9200/podcast_test/_doc/" + str(id), json=json, auth=("elastic", PASSWORD))
+def insert_into_index(json: dict, target_index_path, id = 1):
+    response = requests.post("http://127.0.0.1:9200/" + target_index_path + "/_doc/" + str(id), json=json, auth=("elastic", PASSWORD))
     #print("response: ", response)
     return response
 
-# print("start metadata sorting")       
-# start = time.time()
-# if not os.path.exists("metadata_sorted.txt"):
-#     sort_metadata()
+def delete_index(index_name):
+    index_path = index_name_map[index_name]
 
-# print("metadata sorting done in" , time.time() - start, "seconds")
+    response = requests.delete(ES_URL + index_path, auth=("elastic", PASSWORD))
+    print("Delete index response:", response.status_code, response.text)
+
+def create_index(index_name):
+    index_path = index_name_map[index_name]
+    if index_name == "bm25":
+        index_config = {}
+    if index_name == "LM Dirichlet":
+        index_config = {
+            "settings": {
+                "similarity": {
+                    "my_lm": {
+                        "type": "LMDirichlet",
+                        "mu": 2000
+                    }
+                }
+            },
+            "mappings": {
+                "properties": {
+                    "episode_uri": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "show_description": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "time_start": {
+                        "type": "float"
+                    },
+                    "show_name": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "language": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "episode_description": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "duration": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "show_filename_prefix": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "episode_name": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "episode_filename_prefix": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "publisher": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "show_uri": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "word_list": {
+                        "type": "text",
+                        "similarity": "my_lm",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "rss_link": {
+                        "type": "text",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "text": {
+                        "type": "text",
+                        "similarity": "my_lm",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    },
+                    "time_end": {
+                        "type": "float"
+                    }
+                }
+            }
+        }
+    elif index_name == "IB":
+        index_config = {
+        "settings": {
+            "similarity": {
+                "my_ib": {
+                    "type": "IB",
+                    "distribution": "ll",
+                    "lambda": "df",
+                    "normalization": "z"
+                }
+            }
+        },
+        "mappings": {
+            "properties": {
+                "episode_uri": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "show_description": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "time_start": {"type": "float"},
+                "show_name": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "language": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "episode_description": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "duration": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "show_filename_prefix": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "episode_name": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "episode_filename_prefix": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "publisher": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "show_uri": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "word_list": {
+                    "type": "text",
+                    "similarity": "my_ib",
+                    "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}
+                },
+                "rss_link": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "text": {
+                    "type": "text",
+                    "similarity": "my_ib",
+                    "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}
+                },
+                "time_end": {"type": "float"}
+                }
+            }
+        }
+    response = requests.put(ES_URL + index_path, headers={"Content-Type": "application/json"}, data=json.dumps(index_config), auth=("elastic", PASSWORD))
+    print("Create index response:", response.status_code, response.text)
 
 
+def parse_json(target_index):
+    target_index_path = index_name_map[target_index]
+    path = DIR_PATH + "podcasts-transcripts-summarization-testset/" 
+    dirs = os.listdir(path)
+    dirs.sort()
 
-# path = DIR_PATH + "podcasts-transcripts-summarization-testset/" 
-# dirs = os.listdir(path)
-# dirs.sort()
+    meta_file = open("metadata_sorted.tsv", "r",encoding='utf-8')
+    processed_files = 0
+    print("start json processing")  
+    start = time.time()
+    def upper_sorter(item):
+        return item.upper()
+    for dir in dirs: #For all numbers (0,1,...,8)
+        path_inner = path + dir + "/"
+        dirs_inner = os.listdir(path_inner)
+        dirs_inner.sort(key=upper_sorter)
+        for dir_inner in dirs_inner: #For all chars 0,1,...,9, A, B, ... Z
+            path_inner_inner = path_inner + dir_inner + "/"
+            shows = os.listdir(path_inner_inner)
+            shows.sort(key=upper_sorter)
+            for show in shows: #For all podcast episodes 
+                show_path = path_inner_inner + show + "/"
+                episodes = os.listdir(show_path)
+                episodes.sort(key=upper_sorter)
+                for episode in episodes:
+                    episode_path = show_path + episode + ""
+                    
+                    with open(episode_path, "r",encoding='utf-8') as f:
+                        res = process_json_file(json.load(f))
 
+                    metadata = meta_file.readline()              
+                    meta = process_metadata(metadata)
+                    #print("found episode: \n" + episode_path[138:])
+                    #print(meta["show_uri"][8:] + "/" +meta["episode_filename_prefix"])
+                    for key in res:
+                        meta[key] = res[key]
+                    processed_files += 1
 
-# meta_file = open("metadata_sorted.tsv", "r",encoding='utf-8')
-# processed_files = 0
-# print("start json processing")  
-# start = time.time()
-# def upper_sorter(item):
-#     return item.upper()
-# for dir in dirs: #For all numbers (0,1,...,8)
-#     path_inner = path + dir + "/"
-#     dirs_inner = os.listdir(path_inner)
-#     dirs_inner.sort(key=upper_sorter)
-#     for dir_inner in dirs_inner: #For all chars 0,1,...,9, A, B, ... Z
-#         path_inner_inner = path_inner + dir_inner + "/"
-#         shows = os.listdir(path_inner_inner)
-#         shows.sort(key=upper_sorter)
-#         for show in shows: #For all podcast episodes 
-#             show_path = path_inner_inner + show + "/"
-#             episodes = os.listdir(show_path)
-#             episodes.sort(key=upper_sorter)
-#             for episode in episodes:
-#                 episode_path = show_path + episode + ""
-                
-#                 with open(episode_path, "r",encoding='utf-8') as f:
-#                     res = process_json_file(json.load(f))
+                    insert_into_index(meta, target_index_path, processed_files)
+                    
+                    if (processed_files % 100 == 0):
+                        print("processed", processed_files, "files")
+    meta_file.close()
 
-#                 metadata = meta_file.readline()              
-#                 meta = process_metadata(metadata)
-#                 #print("found episode: \n" + episode_path[138:])
-#                 #print(meta["show_uri"][8:] + "/" +meta["episode_filename_prefix"])
-#                 for key in res:
-#                     meta[key] = res[key]
-#                 processed_files += 1
+    print("json parsing done in" , time.time() - start, "seconds")
 
-#                 insert_into_index(meta, processed_files)
-                
-#                 if (processed_files % 100 == 0):
-#                     print("processed", processed_files, "files")
-# meta_file.close()
+if do_process_metadata:
+    print("start metadata sorting")       
+    start = time.time()
+    sort_metadata()
+    print("metadata sorting done in" , time.time() - start, "seconds")
 
-# print("json parsing done in" , time.time() - start, "seconds")
-
+for index_name in do_populate_index:
+    if do_populate_index[index_name]:
+        delete_index(index_name)
+        create_index(index_name)
+        parse_json(index_name)
 #Run test query
-query = {
-  "query" : {
-    "match" : { "show_name": "IrishIllustrated.com Insider" }
-  }
-}
-response = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=query, auth=("elastic", "ON9oupZ1"))
+if do_run_test_query:
+    query = {
+    "query" : {
+        "match" : { "show_name": "IrishIllustrated.com Insider" }
+    }
+    }
+    response = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=query, auth=("elastic", "ON9oupZ1"))
 
-# print("got response:" , response.content)
-data = response.json()
-with open("output.json", "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+    # print("got response:" , response.content)
+    data = response.json()
+    with open("output.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
