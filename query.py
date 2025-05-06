@@ -4,14 +4,19 @@ from elasticsearch import Elasticsearch
 import pandas as pd
 import requests
 import json
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="../elasticsearch/elastic-start-local/.env")
+import os
 
+PASSWORD = os.getenv("ES_LOCAL_PASSWORD")
+ES_URL = os.getenv("ES_LOCAL_URL")
 
-es = Elasticsearch("http://localhost:9200")
+es = Elasticsearch(ES_URL)
 
-st.title("Podcast Clip Search")
+### UI components
 
-query = st.text_input("Enter a search keyword")
-
+st.title("Podcast Clip Search") # Title
+query = st.text_input("Enter a search keyword") # Query
 
 selected_index = st.selectbox(
     "Select search method",
@@ -50,7 +55,7 @@ if st.button("Start Search") and query.strip():
         rrf_scores = defaultdict(float)
         hits_by_id = {}
         for method, idx in index_name_map.items():
-            response = requests.get(f"http://127.0.0.1:9200/{idx}/_search", json=body, auth=("elastic","ON9oupZ1"))
+            response = requests.get(os.path.join(ES_URL, idx, "_search"), json=body, auth=("elastic", PASSWORD))
             print(f"{method} returned", response.status_code)
             hits = response.json()["hits"]["hits"]
             for rank, hit in enumerate(hits):
@@ -62,7 +67,7 @@ if st.button("Start Search") and query.strip():
         fused_hits = [hits_by_id[docid] for docid,_ in fused]
     else:
         target_index = index_name_map[selected_index]
-        res = requests.get("http://127.0.0.1:9200/" + target_index + "/_search", json=body, auth=("elastic", "ON9oupZ1"))
+        res = requests.get(os.path.join(ES_URL, target_index, "_search"), json=body, auth=("elastic", PASSWORD))
         print("response status code: ", res.status_code)
         fused_hits = res.json()["hits"]["hits"]
 
