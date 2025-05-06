@@ -98,21 +98,28 @@ if st.button("Start Search") and query.strip():
             final_results.append(clip)
 
     if final_results:
-        df = pd.DataFrame(final_results)
         st.markdown("### Search Results")
-        for _, row in df.iterrows():
-            st.markdown(f"""
-                <div style='padding:10px; margin-bottom:15px; background:#f9f9f9; border-left: 4px solid #ccc'>
-                    <b>Clip:</b> {row['Clip Text']}<br>
-                    <b>Start:</b> {row['Start Time (s)']}s | <b>End:</b> {row['End Time (s)']}s<br>
-                    <b>Episode:</b> {row['episode_name']}<br>
-                    <b>Show:</b> {row['show_name']}<br>
-                    <b>Publisher:</b> {row['publisher']}<br>
-                    <details>
-                        <summary><b>Explanation (Click to Expand)</b></summary>
-                        <pre>{row['explanation']}</pre>
-                    </details>
-                </div>
-            """, unsafe_allow_html=True)
+
+        grouped = {}
+        for clip in final_results:
+            ep_name = clip.get("episode_name", "Unknown Episode")
+            grouped.setdefault(ep_name, []).append(clip)
+
+        for ep_name, clips in grouped.items():
+            with st.expander(f"📻 {ep_name}"):
+                for clip in clips:
+                    st.markdown(f"""
+                        <div style='padding:10px; margin-bottom:10px; background:#f9f9f9; border-left: 4px solid #ccc'>
+                            <b>Clip:</b> {clip['Clip Text']}<br>
+                            <b>Start:</b> {clip['Start Time (s)']}s | <b>End:</b> {clip['End Time (s)']}s<br>
+                            <b>Show:</b> {clip['show_name']}<br>
+                            <b>Publisher:</b> {clip['publisher']}<br>
+                            <details>
+                                <summary><b>Explanation (Click to Expand)</b></summary>
+                                <pre>{clip['explanation']}</pre>
+                            </details>
+                        </div>
+                    """, unsafe_allow_html=True)
     else:
         st.warning("No matching clips found. Please try another keyword.")
+
