@@ -1,14 +1,19 @@
-# podcast-search
-# Run the front end query.py
-1. First install dependencies streamlit, elasticsearch and pandas.
+# Podcast Search
 
-2. Make sure the Elastic Search Engine is running locally on http://localhost:9200.
+### Getting started
 
-3. Modify the value of the index name in the first line with your index name (like podcast_test)
+1. Install dependenices. (We use the package manager *uv*.)
 
-4. Then run the command 
 ```
-streamlit run app.py
+uv init
+source .venv/bin/activate
+uv add -r requirements.txt
 ```
 
-5. Enter the key word you want to query and select the clip length, then click Start Search
+2. Run the [Elastic Search Engine](https://github.com/elastic/elasticsearch) is running locally on http://localhost:9200.
+
+3. Parse the indices by running `python json_parsing.py`.
+
+4. Spin up the front end by running `streamlit run query.py`. Open http://localhost:2000 in your browser.
+
+5. Enter your search query and select the clip length, then click Start Search

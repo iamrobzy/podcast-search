@@ -2,23 +2,16 @@ import json
 import os
 import time
 import requests
-DIR_PATH = "../podcasts-no-audio-13GB/spotify-podcasts-2020-summarization-testset/spotify-podcasts-2020/"
-PASSWORD = "ON9oupZ1"
-ES_URL = "http://127.0.0.1:9200/"
 
-do_process_metadata = True
-do_populate_index = {
-    "bm25": False,
-    "LM Dirichlet": True,
-    "IB": True,
-}
-do_run_test_query = True
+from dotenv import load_dotenv
+load_dotenv(dotenv_path="../elasticsearch/elastic-start-local/.env")
+load_dotenv()
 
-index_name_map = {
-    "bm25": "podcast_test",
-    "LM Dirichlet": "podcast_test_lm",
-    "IB": "podcast_test_ib"
-}
+PASSWORD = os.getenv("ES_LOCAL_PASSWORD")
+ES_URL = os.getenv("ES_LOCAL_URL")
+DIR_PATH = "/home/robert/Documents/search/project/podcasts-no-audio-13GB/spotify-podcasts-2020/"
+
+
 def process_json_file(data):
     res = data["results"]
     word_list = []
@@ -34,6 +27,7 @@ def process_json_file(data):
                 endTimes.append(float(word["endTime"][0:-1]))
     string = " ".join(word_list)
     return {"text": string, "word_list": word_list, "time_start": startTimes, "time_end": endTimes}
+
 
 def process_metadata(metadata):
     parts = metadata.split("	")
@@ -52,11 +46,11 @@ def process_metadata(metadata):
     res["episode_filename_prefix"] = parts[11]
     return res
     
+
 def sort_metadata():
     res = []
 
-    with open(DIR_PATH + "metadata-summarization-testset.tsv",encoding='utf-8') as f:
-    #with open("./podcasts-no-audio-13GB/metadata.tsv") as f:
+    with open(os.path.join(DIR_PATH, "metadata-summarization-testset.tsv"),encoding='utf-8') as f:
         i = 1
         lines = []
         line = f.readline()
@@ -69,6 +63,7 @@ def sort_metadata():
             res.append([parts[0] + parts[6], i])
             line = f.readline()
             i += 1
+    
     def sorting_func(item):
         return item[0].upper()
     res.sort(key=sorting_func)
@@ -78,19 +73,21 @@ def sort_metadata():
             i = item[1]
             f.write(lines[i])
 
+
 def insert_into_index(json: dict, target_index_path, id = 1):
-    response = requests.post("http://127.0.0.1:9200/" + target_index_path + "/_doc/" + str(id), json=json, auth=("elastic", PASSWORD))
+    response = requests.post(os.path.join(ES_URL, target_index_path, "_doc", str(id)), json=json, auth=("elastic", PASSWORD))
     #print("response: ", response)
     return response
 
-def delete_index(index_name):
-    index_path = index_name_map[index_name]
 
-    response = requests.delete(ES_URL + index_path, auth=("elastic", PASSWORD))
+def delete_index(index_name):
+    index_path = INDEX_NAME_MAP[index_name]
+    response = requests.delete(os.path.join(ES_URL, index_path), auth=("elastic", PASSWORD))
     print("Delete index response:", response.status_code, response.text)
 
+
 def create_index(index_name):
-    index_path = index_name_map[index_name]
+    index_path = INDEX_NAME_MAP[index_name]
     if index_name == "bm25":
         index_config = {}
     if index_name == "LM Dirichlet":
@@ -283,13 +280,13 @@ def create_index(index_name):
                 }
             }
         }
-    response = requests.put(ES_URL + index_path, headers={"Content-Type": "application/json"}, data=json.dumps(index_config), auth=("elastic", PASSWORD))
+    response = requests.put(os.path.join(ES_URL, index_path), headers={"Content-Type": "application/json"}, data=json.dumps(index_config), auth=("elastic", PASSWORD))
     print("Create index response:", response.status_code, response.text)
 
 
 def parse_json(target_index):
-    target_index_path = index_name_map[target_index]
-    path = DIR_PATH + "podcasts-transcripts-summarization-testset/" 
+    target_index_path = INDEX_NAME_MAP[target_index]
+    path = os.path.join(DIR_PATH, "podcasts-transcripts-summarization-testset")
     dirs = os.listdir(path)
     dirs.sort()
 
@@ -297,22 +294,24 @@ def parse_json(target_index):
     processed_files = 0
     print("start json processing")  
     start = time.time()
+
     def upper_sorter(item):
         return item.upper()
+
     for dir in dirs: #For all numbers (0,1,...,8)
-        path_inner = path + dir + "/"
+        path_inner = os.path.join(path, dir)
         dirs_inner = os.listdir(path_inner)
         dirs_inner.sort(key=upper_sorter)
         for dir_inner in dirs_inner: #For all chars 0,1,...,9, A, B, ... Z
-            path_inner_inner = path_inner + dir_inner + "/"
+            path_inner_inner = os.path.join(path_inner, dir_inner)
             shows = os.listdir(path_inner_inner)
             shows.sort(key=upper_sorter)
             for show in shows: #For all podcast episodes 
-                show_path = path_inner_inner + show + "/"
+                show_path = os.path.join(path_inner_inner, show)
                 episodes = os.listdir(show_path)
                 episodes.sort(key=upper_sorter)
                 for episode in episodes:
-                    episode_path = show_path + episode + ""
+                    episode_path = os.path.join(show_path, episode)
                     
                     with open(episode_path, "r",encoding='utf-8') as f:
                         res = process_json_file(json.load(f))
@@ -329,31 +328,57 @@ def parse_json(target_index):
                     
                     if (processed_files % 100 == 0):
                         print("processed", processed_files, "files")
+
     meta_file.close()
 
-    print("json parsing done in" , time.time() - start, "seconds")
+    print("JSON parsing executed in" , time.time() - start, "seconds")
 
-if do_process_metadata:
-    print("start metadata sorting")       
-    start = time.time()
-    sort_metadata()
-    print("metadata sorting done in" , time.time() - start, "seconds")
 
-for index_name in do_populate_index:
-    if do_populate_index[index_name]:
-        delete_index(index_name)
-        create_index(index_name)
-        parse_json(index_name)
-#Run test query
-if do_run_test_query:
-    query = {
-    "query" : {
-        "match" : { "show_name": "IrishIllustrated.com Insider" }
-    }
-    }
-    response = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=query, auth=("elastic", "ON9oupZ1"))
 
-    # print("got response:" , response.content)
-    data = response.json()
-    with open("output.json", "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+PROCESS_METADATA = True
+
+POPULATE_INDEX = {
+    "bm25": False,
+    "LM Dirichlet": False,
+    "IB": False,
+}
+
+RUN_TEST_QUERY = True
+
+INDEX_NAME_MAP = {
+    "bm25": "podcast_test",
+    "LM Dirichlet": "podcast_test_lm",
+    "IB": "podcast_test_ib"
+}
+
+def main():
+
+    # Sorting metadata
+    if PROCESS_METADATA:
+        print("start metadata sorting")       
+        start = time.time()
+        sort_metadata()
+        print("metadata sorting done in" , time.time() - start, "seconds")
+        
+    # Populate index
+    for index_name in POPULATE_INDEX:
+        if POPULATE_INDEX[index_name]:
+            delete_index(index_name)
+            create_index(index_name)
+            parse_json(index_name)
+    
+    # Test query
+    if RUN_TEST_QUERY:
+        query = {
+            "query" : {
+                "match" : { "show_name": "IrishIllustrated.com Insider" }
+            }
+        }
+        response = requests.get(os.path.join(ES_URL, INDEX_NAME_MAP[index_name], "_search"), json=query, auth=("elastic", PASSWORD))
+        data = response.json()
+
+        with open("output.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+if __name__ == "__main__":
+    main()
