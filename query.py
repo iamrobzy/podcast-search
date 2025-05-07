@@ -7,9 +7,12 @@ import json
 from dotenv import load_dotenv
 load_dotenv(dotenv_path="../elasticsearch/elastic-start-local/.env")
 import os
+import logging
 
 PASSWORD = os.getenv("ES_LOCAL_PASSWORD")
 ES_URL = os.getenv("ES_LOCAL_URL")
+
+logging.basicConfig(level=logging.INFO)
 
 es = Elasticsearch(ES_URL)
 
@@ -23,7 +26,7 @@ selected_index = st.selectbox(
     ("bm25", "LM Dirichlet", "IB", "RRF"),
 )
 
-index_name_map = {
+INDEX_NAME_MAP = {
     "bm25": "podcast_test",
     "LM Dirichlet": "podcast_test_lm",
     "IB": "podcast_test_ib"
@@ -31,8 +34,10 @@ index_name_map = {
 
 clip_length_min = st.slider("Select total clip length (minutes)", 1, 10, 2)
 
-# Search button
-if st.button("Start Search") and query.strip():
+def query_index(query, selected_index, clip_length_min):
+
+    logging.info(f"Querying index {selected_index} for query: {query}")
+
     body = {
         "query": {
             "match": {
@@ -54,7 +59,7 @@ if st.button("Start Search") and query.strip():
         k = 60
         rrf_scores = defaultdict(float)
         hits_by_id = {}
-        for method, idx in index_name_map.items():
+        for method, idx in INDEX_NAME_MAP.items():
             response = requests.get(os.path.join(ES_URL, idx, "_search"), json=body, auth=("elastic", PASSWORD))
             print(f"{method} returned", response.status_code)
             hits = response.json()["hits"]["hits"]
@@ -66,9 +71,9 @@ if st.button("Start Search") and query.strip():
         fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
         fused_hits = [hits_by_id[docid] for docid,_ in fused]
     else:
-        target_index = index_name_map[selected_index]
+        target_index = INDEX_NAME_MAP[selected_index]
         res = requests.get(os.path.join(ES_URL, target_index, "_search"), json=body, auth=("elastic", PASSWORD))
-        print("response status code: ", res.status_code)
+        logging.info(f"Response status code: {res.status_code}")
         fused_hits = res.json()["hits"]["hits"]
 
     def extract_clip_fixed_length(word_list, time_start_list, time_end_list, target_words, clip_seconds=60):
@@ -117,8 +122,6 @@ if st.button("Start Search") and query.strip():
 
     final_results = []
 
-    #for hit in res.body["hits"]["hits"]
-    # for hit in res.json()["hits"]["hits"]:
     for hit in fused_hits:
         source = hit["_source"]
         explanation = hit.get("_explanation", {})
@@ -151,6 +154,14 @@ if st.button("Start Search") and query.strip():
             clip["explanation"] = explanation_text
             final_results.append(clip)
 
+    return final_results
+
+
+# Search button
+if st.button("Start Search") and query.strip():
+
+    final_results = query_index(query, selected_index, clip_length_min)  
+
     eval_data = {
         "query": query,
         "clip_length": clip_length_min,
@@ -159,6 +170,7 @@ if st.button("Start Search") and query.strip():
     }
 
     if final_results:
+
         st.download_button("Download results", data=json.dumps(eval_data), file_name="results.json")
         grouped = {}
         for clip in final_results:
