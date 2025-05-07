@@ -18,7 +18,7 @@ source .venv/bin/activate
 uv add -r requirements.txt
 ```
 
-4. Set up the environment variables from the [Google Gemini API](https://aistudio.google.com/apikey). Copy the `.env.example` file to `.env` and fill in the values.
+4. Set up the environment variables from the [OpenAI API](https://platform.openai.com/docs/overview). Copy the `.env.example` file to `.env` and fill in the values.
 
 5. Run the [Elastic Search Engine](https://github.com/elastic/elasticsearch) is running locally on http://localhost:9200.
 
