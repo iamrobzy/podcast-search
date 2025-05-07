@@ -99,12 +99,13 @@ def query_index(query, selected_index, clip_length_min):
             clip_words = []
             clip_start_time = None
             clip_end_time = None
-
+            matching_words = 0
             for i in range(len(word_list)):
                 if (time_start_list[i] >= window_start) and (time_end_list[i] <= window_end):
                     word = word_list[i]
                     if word.lower() in target_words_lower:
                         word = f"<mark>{word}</mark>"
+                        matching_words += 1
                     clip_words.append(word)
                     if clip_start_time is None:
                         clip_start_time = time_start_list[i]
@@ -115,7 +116,8 @@ def query_index(query, selected_index, clip_length_min):
                     "Clip Text": " ".join(clip_words),
                     "Start Time (s)": clip_start_time,
                     "End Time (s)": clip_end_time,
-                    "Clip Length (min)": round((clip_end_time - clip_start_time) / 60, 2)
+                    "Clip Length (min)": round((clip_end_time - clip_start_time) / 60, 2),
+                    "Matching Words": matching_words
                 })
 
         return clips
@@ -142,6 +144,8 @@ def query_index(query, selected_index, clip_length_min):
             target_words, clip_seconds=clip_length_min * 60
         )
 
+        hit_clips = []
+
         for clip in clips:
             clip["show_uri"] = source.get("show_uri", "")
             clip["show_name"] = source.get("show_name", "")
@@ -152,8 +156,10 @@ def query_index(query, selected_index, clip_length_min):
             clip["episode_description"] = source.get("episode_description", "")
             clip["score"] = hit["_score"]
             clip["explanation"] = explanation_text
-            final_results.append(clip)
+            hit_clips.append(clip)
 
+        hit_clips.sort(key=lambda x: -x["Matching Words"])
+        final_results = final_results + hit_clips
     return final_results
 
 
