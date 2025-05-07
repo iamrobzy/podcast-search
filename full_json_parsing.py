@@ -5,7 +5,7 @@ import requests
 DIR_PATH = "../podcasts-no-audio-13GB/"
 PASSWORD = "ON9oupZ1"
 ES_URL = "http://127.0.0.1:9200/"
-
+START_POINT = 0
 do_process_metadata = True
 do_populate_index = {
     "bm25": True,
@@ -337,9 +337,13 @@ def parse_json(target_index, indexes_to_populate):
                 episodes.sort(key=upper_sorter)
                 for episode in episodes:
                     episode_path = show_path + episode + ""
-                    
-                    with open(episode_path, "r",encoding='utf-8') as f:
-                        res = process_json_file(json.load(f))
+                    if processed_files < START_POINT:
+                        processed_files += 1
+                        _ = meta_file.readline() #dump metadata line
+                        continue
+                    f = open(episode_path, "r",encoding='utf-8')
+                    res = process_json_file(json.load(f))
+                    f.close()
 
                     metadata = meta_file.readline()              
                     meta = process_metadata(metadata)
@@ -354,17 +358,22 @@ def parse_json(target_index, indexes_to_populate):
                     #    if indexes_to_populate[key]:
                     #        insert_into_index(meta, index_name_map[key], processed_files)
 
-                    
-                    if (processed_files % 100 == 0):
-                        print("processed", processed_files, "files")
-                        
                     if (processed_files % 500 == 0):
                         for key in indexes_to_populate:
                             if indexes_to_populate[key]:
                                 #insert_into_index(meta, index_name_map[key], processed_files)
                                 insert_bulk(bulk_data, index_name_map[key])
                         bulk_data = ""
+                        print("processed", processed_files, "files")
+
                         print("elapsed time: ", time.time() - start)
+                    elif (processed_files % 100 == 0):
+                        
+                        print("processed", processed_files, "files")
+
+                        
+                    
+
     meta_file.close()
 
     print("json parsing done in" , time.time() - start, "seconds")
@@ -376,7 +385,7 @@ if do_process_metadata:
     print("metadata sorting done in" , time.time() - start, "seconds")
 
 for index_name in do_populate_index:
-    if do_populate_index[index_name]:
+    if do_populate_index[index_name] and START_POINT == 0:
         delete_index(index_name)
         create_index(index_name)
 
@@ -385,10 +394,10 @@ parse_json(index_name, do_populate_index)
 if do_run_test_query:
     query = {
     "query" : {
-        "match" : { "show_name": "IrishIllustrated.com Insider" }
+        "match" : { "show_name": "The Mother Bakker Podcast" }
     }
     }
-    response = requests.get("http://127.0.0.1:9200/podcast_test/_search", json=query, auth=("elastic", "ON9oupZ1"))
+    response = requests.get("http://127.0.0.1:9200/podcast_bm25/_search", json=query, auth=("elastic", "ON9oupZ1"))
 
     # print("got response:" , response.content)
     data = response.json()
